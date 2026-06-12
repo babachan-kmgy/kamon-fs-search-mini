@@ -1,0 +1,53 @@
+// KAMON検索（全文検索ミニ版）
+async function searchKamon(keyword) {
+  const res = await fetch('kamon_data.json');
+  const data = await res.json();
+
+  const lower = keyword.toLowerCase();
+  return data.filter(item => {
+    const text = (item.sei + item.kamon + item.notes).toLowerCase();
+    return text.includes(lower);
+  });
+}
+
+// FamilySearch検索（今日はダミー）
+async function searchFamilySearch(keyword) {
+  return [
+    { name: keyword + " 太郎（ダミー）", id: "FS-TEST-001" },
+    { name: keyword + " 花子（ダミー）", id: "FS-TEST-002" }
+  ];
+}
+
+// 検索ボタンの動作
+document.getElementById('searchBtn').addEventListener('click', async () => {
+  const keyword = document.getElementById('keyword').value.trim();
+  if (!keyword) return;
+
+  const kamon = await searchKamon(keyword);
+  const fs = await searchFamilySearch(keyword);
+
+  renderKamon(kamon);
+  renderFamilySearch(fs);
+});
+
+// KAMON結果の表示
+function renderKamon(results) {
+  const div = document.getElementById('kamonResults');
+  div.innerHTML = results.map(r => `
+    <div>
+      <strong>${r.sei}</strong> / ${r.kamon}<br>
+      <small>${r.notes}</small>
+    </div>
+  `).join('');
+}
+
+// FamilySearch結果の表示（ダミー）
+function renderFamilySearch(results) {
+  const div = document.getElementById('fsResults');
+  div.innerHTML = results.map(r => `
+    <div>
+      <strong>${r.name}</strong><br>
+      <small>ID: ${r.id}</small>
+    </div>
+  `).join('');
+}
