@@ -3,6 +3,9 @@
 // ローカル辞書 + FamilySearch プロキシ連携 完全版
 // ===============================
 
+// --- GitHub Pages 判定 ---
+const isGithubPages = location.hostname.includes("github.io");
+
 // --- KAMON データ取得（ローカル JSON 読み込み） ---
 async function loadKamonData() {
   const url = 'assets/data/kamon_data.json';  // ローカル辞書
@@ -10,7 +13,8 @@ async function loadKamonData() {
   try {
     const res = await fetch(url, { cache: "no-store" });
     if (!res.ok) {
-      throw new Error("HTTP Error: " + res.status);
+      console.error("KAMON データ取得エラー: HTTP", res.status);
+      return [];
     }
     return await res.json();
   } catch (e) {
@@ -20,53 +24,22 @@ async function loadKamonData() {
 }
 
 // --- KAMON 検索処理 ---
-async function searchKamon(keyword) {
-  const data = await loadKamonData();
-  const lower = keyword.toLowerCase();
+function searchKamon(data, keyword) {
+  if (!keyword) return [];
 
-  return data.filter(item => {
-    const text = [
-      item.sei || "",
-      item.kamon || "",
-      item.notes || ""
-    ].join(" ").toLowerCase();
-
-    return text.includes(lower);
-  });
+  keyword = keyword.trim();
+  return data.filter(item =>
+    item.name.includes(keyword) ||
+    (item.yomi && item.yomi.includes(keyword)) ||
+    (item.desc && item.desc.includes(keyword))
+  );
 }
 
-// --- KAMON 結果表示 ---
-function renderKamonResults(results) {
-  const container = document.getElementById("kamonResults");
-  container.innerHTML = "";
-
-  if (results.length === 0) {
-    container.innerHTML = "<p>該当なし</p>";
-    return;
-  }
-
-  results.forEach(item => {
-    const div = document.createElement("div");
-    div.className = "result-item";
-
-    div.innerHTML = `
-      <h3>${item.sei || "（不明）"}</h3>
-      <p><strong>家紋:</strong> ${item.kamon || "（不明）"}</p>
-      <p><strong>備考:</strong> ${item.notes || ""}</p>
-    `;
-
-    container.appendChild(div);
-  });
-}
-
-// ===============================
-// FamilySearch API（ローカルプロキシ経由）
-// ===============================
-async function searchFS(keyword) {
-  const url = `http://localhost:3000/api/fs?q=${encodeURIComponent(keyword)}`;
-
+// --- FamilySearch API（ローカル専用プロキシ） ---
+async function searchFS(query) {
   try {
-    const res = await fetch(url, { cache: "no-store" });
+    const res = await fetch(`http://localhost:3000/api/fs?q=${encodeURIComponent(query)}`);
+    if (!res.ok) throw new Error("HTTP " + res.status);
     return await res.json();
   } catch (e) {
     console.error("FS API error:", e);
@@ -74,59 +47,71 @@ async function searchFS(keyword) {
   }
 }
 
-// --- FamilySearch 結果表示 ---
-function renderFSResults(data) {
-  const container = document.getElementById("fsResults");
-  container.innerHTML = "";
+// ===============================
+// DOM 操作（GitHub Pages 判定を含む）
+// ===============================
+document.addEventListener("DOMContentLoaded", async () => {
 
-  if (!data || !data.results || data.results.length === 0) {
-    container.innerHTML = "<p>該当なし</p>";
-    return;
+  // --- GitHub Pages では FS 検索を無効化 ---
+  if (isGithubPages) {
+    const fsBtn = document.getElementById("fs-search-btn");
+    const fsInput = document.getElementById("fs-input");
+    const fsNote = document.getElementById("fs-note");
+
+    if (fsBtn) fsBtn.disabled = true;
+    if (fsInput) fsInput.disabled = true;
+
+    if (fsNote) {
+      fsNote.textContent = "※ FamilySearch 検索はローカル環境専用です";
+      fsNote.style.color = "gray";
+      fsNote.style.fontSize = "0.9em";
+      fsNote.style.marginTop = "4px";
+    }
   }
 
-  data.results.forEach(item => {
-    const div = document.createElement("div");
-    div.className = "result-item";
+  // --- KAMON データ読み込み ---
+  const kamonData = await loadKamonData();
 
-    div.innerHTML = `
-      <h3>${item.display?.name || "不明"}</h3>
-      <p>生年: ${item.display?.birthDate || "不明"}</p>
-      <p>没年: ${item.display?.deathDate || "不明"}</p>
-    `;
+  // --- KAMON 検索ボタン ---
+  document.getElementById("kamon-search-btn")?.addEventListener("click", () => {
+    const keyword = document.getElementById("kamon-input").value;
+    const results = searchKamon(kamonData, keyword);
 
-    container.appendChild(div);
+    const out = document.getElementById("kamon-results");
+    out.innerHTML = "";
+
+    if (results.length === 0) {
+      out.textContent = "該当する家紋が見つかりませんでした。";
+      return;
+    }
+
+    results.forEach(item => {
+      const div = document.createElement("div");
+      div.className = "result-item";
+      div.innerHTML = `
+        <strong>${item.name}</strong><br>
+        <span>${item.desc || ""}</span>
+      `;
+      out.appendChild(div);
+    });
   });
-}
 
-// ===============================
-// 検索イベント（KAMON + FS）
-// ===============================
-document.getElementById("searchBtn").addEventListener("click", async () => {
-  const keyword = document.getElementById("keyword").value.trim();
-  if (keyword === "") {
-    alert("検索ワードを入力してください");
-    return;
-  }
+  // --- FS 検索ボタン（ローカル専用） ---
+  document.getElementById("fs-search-btn")?.addEventListener("click", async () => {
+    if (isGithubPages) return; // GitHub Pages では動作しない
 
-  // KAMON
-  const results = await searchKamon(keyword);
-  renderKamonResults(results);
+    const keyword = document.getElementById("fs-input").value;
+    const out = document.getElementById("fs-results");
+    out.innerHTML = "検索中…";
 
-  // FamilySearch（ローカルプロキシ）
-  const fsData = await searchFS(keyword);
-  renderFSResults(fsData);
-});
+    const data = await searchFS(keyword);
 
-// --- Enter キーで検索 ---
-document.getElementById("keyword").addEventListener("keypress", async (e) => {
-  if (e.key === "Enter") {
-    const keyword = document.getElementById("keyword").value.trim();
-    if (keyword === "") return;
+    if (!data) {
+      out.textContent = "FamilySearch API への接続に失敗しました（ローカル専用）。";
+      return;
+    }
 
-    const results = await searchKamon(keyword);
-    renderKamonResults(results);
+    out.textContent = JSON.stringify(data, null, 2);
+  });
 
-    const fsData = await searchFS(keyword);
-    renderFSResults(fsData);
-  }
 });
