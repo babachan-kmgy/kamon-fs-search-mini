@@ -1,11 +1,11 @@
 // ===============================
 // KAMON FS Search Mini - app.js
-// データ参照型（kamon-data-v3）完全版
+// ローカル辞書 + FamilySearch プロキシ連携 完全版
 // ===============================
 
-// --- データ取得（オンライン辞書参照） ---
+// --- KAMON データ取得（ローカル JSON 読み込み） ---
 async function loadKamonData() {
-  const url = 'https://babachan-kmgy.github.io/kamon-data-v3/data/kamon.json';
+  const url = 'assets/data/kamon_data.json';  // ローカル辞書
 
   try {
     const res = await fetch(url, { cache: "no-store" });
@@ -14,27 +14,28 @@ async function loadKamonData() {
     }
     return await res.json();
   } catch (e) {
-    console.error("データ取得エラー:", e);
+    console.error("KAMON データ取得エラー:", e);
     return [];
   }
 }
 
-// --- 検索処理 ---
+// --- KAMON 検索処理 ---
 async function searchKamon(keyword) {
   const data = await loadKamonData();
   const lower = keyword.toLowerCase();
 
   return data.filter(item => {
-    const text = (
-      (item.sei || "") +
-      (item.kamon || "") +
-      (item.notes || "")
-    ).toLowerCase();
+    const text = [
+      item.sei || "",
+      item.kamon || "",
+      item.notes || ""
+    ].join(" ").toLowerCase();
+
     return text.includes(lower);
   });
 }
 
-// --- DOM 操作：KAMON の結果表示 ---
+// --- KAMON 結果表示 ---
 function renderKamonResults(results) {
   const container = document.getElementById("kamonResults");
   container.innerHTML = "";
@@ -58,7 +59,48 @@ function renderKamonResults(results) {
   });
 }
 
-// --- イベント：検索ボタン ---
+// ===============================
+// FamilySearch API（ローカルプロキシ経由）
+// ===============================
+async function searchFS(keyword) {
+  const url = `http://localhost:3000/api/fs?q=${encodeURIComponent(keyword)}`;
+
+  try {
+    const res = await fetch(url, { cache: "no-store" });
+    return await res.json();
+  } catch (e) {
+    console.error("FS API error:", e);
+    return null;
+  }
+}
+
+// --- FamilySearch 結果表示 ---
+function renderFSResults(data) {
+  const container = document.getElementById("fsResults");
+  container.innerHTML = "";
+
+  if (!data || !data.results || data.results.length === 0) {
+    container.innerHTML = "<p>該当なし</p>";
+    return;
+  }
+
+  data.results.forEach(item => {
+    const div = document.createElement("div");
+    div.className = "result-item";
+
+    div.innerHTML = `
+      <h3>${item.display?.name || "不明"}</h3>
+      <p>生年: ${item.display?.birthDate || "不明"}</p>
+      <p>没年: ${item.display?.deathDate || "不明"}</p>
+    `;
+
+    container.appendChild(div);
+  });
+}
+
+// ===============================
+// 検索イベント（KAMON + FS）
+// ===============================
 document.getElementById("searchBtn").addEventListener("click", async () => {
   const keyword = document.getElementById("keyword").value.trim();
   if (keyword === "") {
@@ -66,8 +108,13 @@ document.getElementById("searchBtn").addEventListener("click", async () => {
     return;
   }
 
+  // KAMON
   const results = await searchKamon(keyword);
   renderKamonResults(results);
+
+  // FamilySearch（ローカルプロキシ）
+  const fsData = await searchFS(keyword);
+  renderFSResults(fsData);
 });
 
 // --- Enter キーで検索 ---
@@ -78,5 +125,8 @@ document.getElementById("keyword").addEventListener("keypress", async (e) => {
 
     const results = await searchKamon(keyword);
     renderKamonResults(results);
+
+    const fsData = await searchFS(keyword);
+    renderFSResults(fsData);
   }
 });
