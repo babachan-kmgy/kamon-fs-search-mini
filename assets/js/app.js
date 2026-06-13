@@ -1,6 +1,6 @@
 // ===============================
 // KAMON FS Search Mini - app.js
-// ローカル辞書 + FamilySearch プロキシ連携 完全版
+// 姓検索（sei → kamon）対応 完全版
 // ===============================
 
 // --- GitHub Pages 判定 ---
@@ -8,7 +8,7 @@ const isGithubPages = location.hostname.includes("github.io");
 
 // --- KAMON データ取得（ローカル JSON 読み込み） ---
 async function loadKamonData() {
-  const url = 'assets/data/kamon_data.json';  // ローカル辞書
+  const url = 'assets/data/kamon_data.json';  // 姓辞書
 
   try {
     const res = await fetch(url, { cache: "no-store" });
@@ -23,14 +23,17 @@ async function loadKamonData() {
   }
 }
 
-// --- KAMON 検索処理 ---
+// ===============================
+// ★ 姓検索ロジック（sei / kamon / desc）
+// ===============================
 function searchKamon(data, keyword) {
   if (!keyword) return [];
 
   keyword = keyword.trim();
+
   return data.filter(item =>
-    item.name.includes(keyword) ||
-    (item.yomi && item.yomi.includes(keyword)) ||
+    (item.sei && item.sei.includes(keyword)) ||
+    (item.kamon && item.kamon.includes(keyword)) ||
     (item.desc && item.desc.includes(keyword))
   );
 }
@@ -72,7 +75,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // --- KAMON データ読み込み ---
   const kamonData = await loadKamonData();
 
-  // --- KAMON 検索ボタン ---
+  // --- KAMON（姓）検索ボタン ---
   document.getElementById("kamon-search-btn")?.addEventListener("click", () => {
     const keyword = document.getElementById("kamon-input").value;
     const results = searchKamon(kamonData, keyword);
@@ -89,7 +92,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const div = document.createElement("div");
       div.className = "result-item";
       div.innerHTML = `
-        <strong>${item.name}</strong><br>
+        <strong>${item.sei}</strong>（家紋：${item.kamon}）<br>
         <span>${item.desc || ""}</span>
       `;
       out.appendChild(div);
